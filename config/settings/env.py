@@ -48,7 +48,6 @@ class AppSettings(BaseSettings):
     arvan_endpoint_url: AnyHttpUrl = Field(
         default="https://s3.ir-thr-at1.arvanstorage.com", alias="ARVAN_ENDPOINT_URL"
     )
-    arvan_region_name: str = Field(default="ir-thr-at1", alias="ARVAN_REGION_NAME")
     arvan_access_key_id: str = Field(default="", alias="ARVAN_ACCESS_KEY_ID")
     arvan_secret_access_key: str = Field(default="", alias="ARVAN_SECRET_ACCESS_KEY")
     arvan_static_bucket: str = Field(default="storyteller-static", alias="ARVAN_STATIC_BUCKET")

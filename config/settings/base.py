@@ -125,7 +125,6 @@ SPECTACULAR_SETTINGS = {
 AWS_ACCESS_KEY_ID = settings.arvan_access_key_id
 AWS_SECRET_ACCESS_KEY = settings.arvan_secret_access_key
 AWS_S3_ENDPOINT_URL = str(settings.arvan_endpoint_url)
-AWS_S3_REGION_NAME = settings.arvan_region_name
 AWS_QUERYSTRING_AUTH = True
 AWS_QUERYSTRING_EXPIRE = settings.arvan_signed_url_expiry_seconds
 AWS_S3_OBJECT_PARAMETERS = {
