@@ -1,0 +1,32 @@
+{% extends "admin/base_site.html" %}
+
+{% block content %}
+<div class="content">
+  <h1>Editor Workspace — {{ story_request.public_id }}</h1>
+  <div class="module">
+    <h2>Context</h2>
+    <p><strong>Theme:</strong> {{ story_request.theme }}</p>
+    <p><strong>Reading level:</strong> {{ story_request.get_reading_level_display }}</p>
+    <p><strong>Plan:</strong> {{ story_request.get_plan_display }}</p>
+    <p><strong>Status:</strong> {{ story_request.status }}</p>
+    <p><strong>Characters:</strong></p>
+    <ul>
+      {% for character in story_request.characters_json %}
+        <li>{{ character.name }} — {{ character.role }}{% if character.traits %} ({{ character.traits|join:", " }}){% endif %}</li>
+      {% empty %}
+        <li>No characters defined.</li>
+      {% endfor %}
+    </ul>
+  </div>
+  <form method="post" novalidate>
+    {% csrf_token %}
+    <fieldset class="module aligned">
+      {{ form.as_p }}
+    </fieldset>
+    <div class="submit-row">
+      <input type="submit" value="Create Story from this Request" class="default">
+      <a href="{% url 'admin:requests_storyrequest_change' story_request.pk %}" class="button cancel-link">Back</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

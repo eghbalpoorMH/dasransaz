@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlsplit, urlunsplit
 
 from config.settings.env import BASE_DIR, settings
 
@@ -37,6 +37,9 @@ INSTALLED_APPS = [
     "corsheaders",
     "storages",
     "accounts",
+    "billing",
+    "story_requests",
+    "stories",
 ]
 
 MIDDLEWARE = [
@@ -121,37 +124,109 @@ SPECTACULAR_SETTINGS = {
 }
 
 
+BILLING = {
+    "CURRENCY": settings.billing_currency,
+    "DEFAULT_PROVIDER": settings.billing_default_provider,
+    "PROVIDERS": settings.billing_providers
+    or {
+        "iran_gw": {
+            "MERCHANT_ID": "",
+            "GATEWAY": "zarinpal",
+            "SANDBOX": True,
+        },
+        "bazaar_iap": {
+            "CLIENT_ID": "",
+            "CLIENT_SECRET": "",
+            "PACKAGE_NAME": "",
+            "REFRESH_TOKEN": "",
+            "SANDBOX": True,
+        },
+    },
+}
+
+
 # Static & Media via Arvan ----------------------------------------------------
-AWS_ACCESS_KEY_ID = settings.arvan_access_key_id
-AWS_SECRET_ACCESS_KEY = settings.arvan_secret_access_key
-AWS_S3_ENDPOINT_URL = str(settings.arvan_endpoint_url)
 AWS_QUERYSTRING_AUTH = True
-AWS_QUERYSTRING_EXPIRE = settings.arvan_signed_url_expiry_seconds
+AWS_QUERYSTRING_EXPIRE = 1000
+AWS_S3_SIGNATURE_VERSION = "s3v4"
+AWS_S3_FILE_OVERWRITE = False
 AWS_S3_OBJECT_PARAMETERS = {
     "CacheControl": "max-age=86400",
 }
-AWS_S3_SIGNATURE_VERSION = "s3v4"
-AWS_S3_FILE_OVERWRITE = False
 
-ARVAN_STATIC_BUCKET = settings.arvan_static_bucket
-ARVAN_MEDIA_BUCKET = settings.arvan_media_bucket
-ARVAN_STATIC_LOCATION = settings.arvan_static_location
-ARVAN_MEDIA_LOCATION = settings.arvan_media_location
 
-_endpoint = urlparse(AWS_S3_ENDPOINT_URL)
-_default_static_domain = f"{settings.arvan_static_bucket}.{_endpoint.netloc}"
-_default_media_domain = f"{settings.arvan_media_bucket}.{_endpoint.netloc}"
+def _build_public_url(endpoint_url: str, bucket_name: str, location: str) -> str:
+    endpoint = (endpoint_url or "").strip()
+    bucket = (bucket_name or "").strip()
+    location = (location or "").strip()
+    if not endpoint:
+        return ""
 
-ARVAN_STATIC_CUSTOM_DOMAIN = settings.arvan_static_custom_domain or _default_static_domain
-ARVAN_MEDIA_CUSTOM_DOMAIN = settings.arvan_media_custom_domain or _default_media_domain
+    parsed = urlsplit(endpoint.rstrip("/"))
+    path_segments = [segment for segment in parsed.path.split("/") if segment]
+    bucket_in_subdomain = bool(bucket) and parsed.netloc.startswith(f"{bucket}.")
+    bucket_in_path = bool(bucket) and bucket in path_segments
 
-STATIC_URL = f"https://{ARVAN_STATIC_CUSTOM_DOMAIN}/{ARVAN_STATIC_LOCATION}/"
-MEDIA_URL = f"https://{ARVAN_MEDIA_CUSTOM_DOMAIN}/{ARVAN_MEDIA_LOCATION}/"
+    combined_path = path_segments.copy()
+    if bucket and not bucket_in_subdomain and not bucket_in_path:
+        combined_path.append(bucket)
+    if location:
+        combined_path.extend([segment for segment in location.split("/") if segment])
+
+    new_path = "/" + "/".join(combined_path) if combined_path else ""
+    rebuilt = urlunsplit((parsed.scheme, parsed.netloc, new_path, "", ""))
+    return rebuilt.rstrip("/") + "/"
+
+
+PUBLIC_ACCESS_KEY = settings.s3_access_key_public or settings.arvan_access_key_id
+PUBLIC_SECRET_KEY = settings.s3_secret_key_public or settings.arvan_secret_access_key
+PUBLIC_BUCKET_NAME = settings.s3_bucket_name_public or settings.arvan_media_bucket
+PUBLIC_LOCATION = settings.s3_location_public or settings.arvan_media_location
+PUBLIC_ENDPOINT_URL = settings.s3_endpoint_url_public or str(settings.arvan_endpoint_url)
+
+STATIC_ACCESS_KEY = settings.s3_access_key_static or settings.arvan_access_key_id
+STATIC_SECRET_KEY = settings.s3_secret_key_static or settings.arvan_secret_access_key
+STATIC_BUCKET_NAME = settings.s3_bucket_name_static or settings.arvan_static_bucket
+STATIC_LOCATION = settings.s3_location_static or settings.arvan_static_location
+STATIC_ENDPOINT_URL = settings.s3_endpoint_url_static or str(settings.arvan_endpoint_url)
+
+STATIC_URL = _build_public_url(STATIC_ENDPOINT_URL, STATIC_BUCKET_NAME, STATIC_LOCATION)
+MEDIA_URL = _build_public_url(PUBLIC_ENDPOINT_URL, PUBLIC_BUCKET_NAME, PUBLIC_LOCATION)
 
 STATICFILES_DIRS = [BASE_DIR / "static"]
+STATIC_ROOT = BASE_DIR / "staticfiles"
 
-STATICFILES_STORAGE = "config.storage_backends.PublicStaticStorage"
-DEFAULT_FILE_STORAGE = "config.storage_backends.PrivateMediaStorage"
+STORAGES = {
+    "default": {
+        "BACKEND": "storages.backends.s3.S3Storage",
+        "OPTIONS": {
+            "access_key": PUBLIC_ACCESS_KEY,
+            "secret_key": PUBLIC_SECRET_KEY,
+            "bucket_name": PUBLIC_BUCKET_NAME,
+            "file_overwrite": False,
+            "location": PUBLIC_LOCATION,
+            "endpoint_url": PUBLIC_ENDPOINT_URL,
+            "querystring_expire": 1000,
+        },
+    },
+    "staticfiles": {
+        "BACKEND": "storages.backends.s3.S3Storage",
+        "OPTIONS": {
+            "access_key": STATIC_ACCESS_KEY,
+            "secret_key": STATIC_SECRET_KEY,
+            "bucket_name": STATIC_BUCKET_NAME,
+            "default_acl": "public-read",
+            "file_overwrite": False,
+            "location": STATIC_LOCATION,
+            "endpoint_url": STATIC_ENDPOINT_URL,
+            "querystring_auth": False,
+        },
+    },
+}
+
+AWS_ACCESS_KEY_ID = PUBLIC_ACCESS_KEY
+AWS_SECRET_ACCESS_KEY = PUBLIC_SECRET_KEY
+AWS_S3_ENDPOINT_URL = PUBLIC_ENDPOINT_URL
 
 
 # CORS & CSRF -----------------------------------------------------------------

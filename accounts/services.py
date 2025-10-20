@@ -58,7 +58,7 @@ def verify_login_code(phone_number: str, code: str) -> tuple[User, bool]:
         raise InvalidCodeError("Verification code is invalid.")
 
     verification.mark_used()
-    user, created = User.objects.get_or_create(phone_number=normalized_phone)
+    user, created = User.objects.get_or_create_by_phone(normalized_phone)
     if created:
         logger.info("Created new user with phone %s", normalized_phone)
     return user, created

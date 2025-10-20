@@ -10,7 +10,8 @@ services:
     env_file:
       - .env
     environment:
-      DJANGO_SETTINGS_MODULE: config.settings.production
+      # DJANGO_SETTINGS_MODULE: config.settings.production
+      DJANGO_SETTINGS_MODULE: config.settings.local
     ports:
       - "8000:8000"
     depends_on:
@@ -28,7 +29,8 @@ services:
     env_file:
       - .env
     environment:
-      DJANGO_SETTINGS_MODULE: config.settings.production
+      # DJANGO_SETTINGS_MODULE: config.settings.production
+      DJANGO_SETTINGS_MODULE: config.settings.local
     depends_on:
       - postgres
       - rabbitmq
@@ -44,7 +46,8 @@ services:
     env_file:
       - .env
     environment:
-      DJANGO_SETTINGS_MODULE: config.settings.production
+      # DJANGO_SETTINGS_MODULE: config.settings.production
+      DJANGO_SETTINGS_MODULE: config.settings.local
     depends_on:
       - postgres
       - rabbitmq

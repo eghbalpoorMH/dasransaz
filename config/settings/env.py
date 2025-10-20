@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+import json
 from typing import Any, List, Optional
 
 from pydantic import AnyHttpUrl, Field, field_validator
@@ -33,7 +34,7 @@ class AppSettings(BaseSettings):
     secret_key: str = Field(default="django-insecure-change-me", alias="DJANGO_SECRET_KEY")
     debug: bool = Field(default=False, alias="DJANGO_DEBUG")
     allowed_hosts: List[str] = Field(default_factory=list, alias="DJANGO_ALLOWED_HOSTS")
-    cors_allowed_origins: List[AnyHttpUrl] = Field(default_factory=list, alias="DJANGO_CORS_ALLOWED_ORIGINS")
+    cors_allowed_origins: List[str] = Field(default_factory=list, alias="DJANGO_CORS_ALLOWED_ORIGINS")
     csrf_trusted_origins: List[AnyHttpUrl] = Field(default_factory=list, alias="DJANGO_CSRF_TRUSTED_ORIGINS")
 
     database_host: str = Field(default="postgres", alias="POSTGRES_HOST")
@@ -58,6 +59,18 @@ class AppSettings(BaseSettings):
     arvan_media_location: str = Field(default="media", alias="ARVAN_MEDIA_LOCATION")
     arvan_signed_url_expiry_seconds: int = Field(default=3600, alias="ARVAN_SIGNED_URL_EXPIRY_SECONDS")
 
+    s3_access_key_public: str = Field(default="", alias="S3_ACCESS_KEY_PUBLIC")
+    s3_secret_key_public: str = Field(default="", alias="S3_SECRET_KEY_PUBLIC")
+    s3_bucket_name_public: str = Field(default="", alias="S3_BUCKET_NAME_PUBLIC")
+    s3_location_public: str = Field(default="", alias="S3_LOCATION_PUBLIC")
+    s3_endpoint_url_public: str = Field(default="", alias="S3_ENDPOINT_URL_PUBLIC")
+
+    s3_access_key_static: str = Field(default="", alias="S3_ACCESS_KEY_STATIC")
+    s3_secret_key_static: str = Field(default="", alias="S3_SECRET_KEY_STATIC")
+    s3_bucket_name_static: str = Field(default="", alias="S3_BUCKET_NAME_STATIC")
+    s3_location_static: str = Field(default="", alias="S3_LOCATION_STATIC")
+    s3_endpoint_url_static: str = Field(default="", alias="S3_ENDPOINT_URL_STATIC")
+
     jwt_access_token_lifetime_minutes: int = Field(default=5, alias="JWT_ACCESS_TOKEN_LIFETIME_MINUTES")
     jwt_refresh_token_lifetime_days: int = Field(default=30, alias="JWT_REFRESH_TOKEN_LIFETIME_DAYS")
     jwt_rotation_strategy: str = Field(default="rotate", alias="JWT_ROTATION_STRATEGY")
@@ -70,6 +83,10 @@ class AppSettings(BaseSettings):
 
     log_level: str = Field(default="INFO", alias="DJANGO_LOG_LEVEL")
 
+    billing_currency: str = Field(default="IRR", alias="BILLING_CURRENCY")
+    billing_default_provider: str = Field(default="iran_gw", alias="BILLING_DEFAULT_PROVIDER")
+    billing_providers_raw: str = Field(default="{}", alias="BILLING_PROVIDERS_JSON")
+
     @field_validator("allowed_hosts", mode="before")
     @classmethod
     def parse_allowed_hosts(cls, value: Any) -> list[str]:
@@ -79,6 +96,16 @@ class AppSettings(BaseSettings):
     @classmethod
     def parse_origins(cls, value: Any) -> list[str]:
         return _split_csv(value)
+
+    @property
+    def billing_providers(self) -> dict[str, dict[str, Any]]:
+        try:
+            data = json.loads(self.billing_providers_raw) if self.billing_providers_raw else {}
+            if not isinstance(data, dict):
+                return {}
+            return data
+        except json.JSONDecodeError:
+            return {}
 
 
 @lru_cache
