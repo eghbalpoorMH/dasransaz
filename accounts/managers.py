@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from django.contrib.auth.base_user import BaseUserManager
+from django.utils.crypto import get_random_string
 
 
 class UserManager(BaseUserManager):
@@ -41,6 +42,9 @@ class UserManager(BaseUserManager):
             suffix += 1
             candidate = f"{base_username}_{suffix}"
         return candidate
+
+    def _generate_random_password(self, length: int = 12) -> str:
+        return get_random_string(length)
 
     def _prepare_fields(self, **extra_fields: Any) -> dict[str, Any]:
         fields = extra_fields.copy()
@@ -88,9 +92,32 @@ class UserManager(BaseUserManager):
 
     def get_or_create_by_phone(self, phone_number: str, **extra_fields: Any):
         normalized_phone = self.normalize_phone(phone_number)
-        defaults = self._prepare_fields(phone_number=normalized_phone, **extra_fields)
-        defaults.setdefault(
-            "username",
-            self.generate_username_from_phone(normalized_phone, exclude_pk=None),
-        )
-        return self.get_or_create(phone_number=normalized_phone, defaults=defaults)
+        extra_copy = extra_fields.copy()
+        explicit_username = extra_copy.pop("username", None)
+        explicit_password = extra_copy.pop("password", None)
+        prepared_fields = self._prepare_fields(**extra_copy)
+
+        try:
+            user = self.get(phone_number=normalized_phone)
+        except self.model.DoesNotExist:
+            username = explicit_username or self.generate_username_from_phone(normalized_phone, exclude_pk=None)
+            password = explicit_password or self._generate_random_password()
+            fields = {**prepared_fields, "phone_number": normalized_phone}
+            user = self._create_user(username, password, **fields)
+            return user, True
+
+        update_fields: list[str] = []
+        for field, value in prepared_fields.items():
+            if value is not None and getattr(user, field) != value:
+                setattr(user, field, value)
+                update_fields.append(field)
+
+        if explicit_password:
+            user.set_password(explicit_password)
+            update_fields.append("password")
+
+        if update_fields:
+            update_fields.append("updated_at")
+            user.save(update_fields=update_fields)
+
+        return user, False
