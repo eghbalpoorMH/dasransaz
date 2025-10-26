@@ -1,16 +1,26 @@
 from __future__ import annotations
 
-from typing import Any
+from datetime import timedelta
+from typing import Any, Optional
 
 import httpx
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
+from django.utils import timezone
 
 from .base import BaseProvider
 
 
 class BazaarIAPProvider(BaseProvider):
     code = "bazaar_iap"
+
+    TOKEN_URL = "https://pardakht.cafebazaar.ir/devapi/v2/auth/token/"
+    VALIDATE_URL = "https://pardakht.cafebazaar.ir/devapi/v2/api/validate"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._access_token: Optional[str] = None
+        self._token_expiry: Optional[timezone.datetime] = None
 
     def init_payment(self, payment, return_url: str, callback_url: str) -> dict[str, Any]:
         return {
@@ -32,25 +42,17 @@ class BazaarIAPProvider(BaseProvider):
         if not purchase_token or not product_id:
             raise ImproperlyConfigured("purchase_token and product_id are required for Bazaar verification")
 
-        response_data = self._request(
-            "https://pardakht.cafebazaar.ir/devapi/v2/api/validate",  # placeholder endpoint
-            {
-                "purchaseToken": purchase_token,
-                "sku": product_id,
-                "packageName": self.config.get("PACKAGE_NAME"),
-                "sandbox": self.config.get("SANDBOX", True),
-            },
-        )
+        response_data = self._validate_purchase(product_id=product_id, purchase_token=purchase_token)
 
-        status = response_data.get("status", "failed")
-        if status != "success":
+        purchase_state = response_data.get("status") or response_data.get("purchaseState")
+        if purchase_state not in (0, "success"):
             return {
                 "status": "failed",
                 "error_code": response_data.get("error_code", "TOKEN_VERIFICATION_FAILED"),
                 "raw": response_data,
             }
 
-        provider_ref = order_id or response_data.get("order_id") or purchase_token
+        provider_ref = order_id or response_data.get("orderId") or purchase_token
         return {
             "status": "success",
             "provider_ref": provider_ref,
@@ -60,15 +62,47 @@ class BazaarIAPProvider(BaseProvider):
     def refund(self, payment, amount: int, reason: str = "") -> dict[str, Any]:
         return {"status": "unsupported"}
 
-    def _request(self, url: str, payload: dict[str, Any]) -> dict[str, Any]:
+    def _get_access_token(self) -> str:
+        if self._access_token and self._token_expiry and timezone.now() < self._token_expiry:
+            return self._access_token
+
         client_id = self.config.get("CLIENT_ID")
         client_secret = self.config.get("CLIENT_SECRET")
-        if not client_id or not client_secret:
+        refresh_token = self.config.get("REFRESH_TOKEN")
+        if not all([client_id, client_secret, refresh_token]):
             raise ImproperlyConfigured("Bazaar provider credentials are not configured")
 
-        headers = {"Authorization": f"Basic {client_id}:{client_secret}"}
+        data = {
+            "grant_type": "refresh_token",
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "refresh_token": refresh_token,
+        }
         with httpx.Client(timeout=10.0) as client:
-            response = client.post(url, json=payload, headers=headers)
+            response = client.post(self.TOKEN_URL, data=data)
+            response.raise_for_status()
+            payload = response.json()
+
+        access_token = payload.get("access_token")
+        if not access_token:
+            raise ImproperlyConfigured("Bazaar access token response is invalid.")
+        expires_in = payload.get("expires_in", 3600)
+        self._access_token = access_token
+        self._token_expiry = timezone.now() + timedelta(seconds=max(expires_in - 60, 60))
+        return access_token
+
+    def _validate_purchase(self, product_id: str, purchase_token: str) -> dict[str, Any]:
+        package_name = self.config.get("PACKAGE_NAME")
+        if not package_name:
+            raise ImproperlyConfigured("Bazaar package name is not configured.")
+
+        access_token = self._get_access_token()
+        sandbox = self.config.get("SANDBOX", True)
+        url = f"{self.VALIDATE_URL}/{package_name}/inapp/{product_id}/{purchase_token}/"
+
+        headers = {"Authorization": f"Bearer {access_token}"}
+        params = {"sandbox": str(bool(sandbox)).lower()}
+        with httpx.Client(timeout=10.0) as client:
+            response = client.get(url, params=params, headers=headers)
             response.raise_for_status()
             return response.json()
-

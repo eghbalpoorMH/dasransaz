@@ -158,6 +158,14 @@ class BazaarVerifyView(APIView):
             if not payment:
                 return Response({"detail": "پرداخت یافت نشد."}, status=status.HTTP_404_NOT_FOUND)
 
+            story_request = payment.story_requests.select_related("product").first()
+            expected_sku = None
+            if story_request and story_request.product:
+                expected_sku = (story_request.product.bazaar_sku or "").strip()
+            provided_sku = serializer.validated_data["product_id"].strip()
+            if expected_sku and expected_sku.lower() != provided_sku.lower():
+                return Response({"detail": "شناسه محصول معتبر نیست."}, status=status.HTTP_400_BAD_REQUEST)
+
             provider = services.get_provider_instance("bazaar_iap")
             result = provider.server_verify(payment, **serializer.validated_data)
 

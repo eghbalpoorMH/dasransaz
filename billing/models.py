@@ -154,3 +154,86 @@ class IdempotencyKey(BaseModel):
 
     class Meta:
         ordering = ("-created_at",)
+
+
+class ProviderCoinRateQuerySet(models.QuerySet):
+    def active(self) -> "ProviderCoinRateQuerySet":
+        return self.filter(is_active=True)
+
+    def for_provider(self, provider: str, currency: str) -> "ProviderCoinRateQuerySet":
+        return self.filter(provider=provider, currency=currency)
+
+
+class ProviderCoinRate(BaseModel):
+    provider = models.CharField(max_length=50)
+    currency = models.CharField(max_length=10, default=settings.BILLING.get("CURRENCY", "IRR"))
+    base_amount = models.PositiveIntegerField(help_text=_("Amount in provider currency for one step."))
+    coins = models.PositiveIntegerField(help_text=_("Coins granted per step."))
+    is_active = models.BooleanField(default=True)
+    note = models.CharField(max_length=255, blank=True)
+
+    objects = ProviderCoinRateQuerySet.as_manager()
+
+    class Meta:
+        ordering = ("provider", "currency", "base_amount")
+        unique_together = ("provider", "currency", "base_amount")
+        verbose_name = "Provider coin rate"
+
+    def __str__(self) -> str:  # pragma: no cover - admin display
+        return f"{self.provider} {self.currency}: {self.base_amount} -> {self.coins}"
+
+    def coins_for_amount(self, amount: int) -> int:
+        if amount <= 0 or self.base_amount <= 0:
+            return 0
+        steps = amount // self.base_amount
+        return steps * self.coins
+
+
+class Wallet(BaseModel):
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        related_name="wallet",
+        on_delete=models.CASCADE,
+    )
+    balance = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        verbose_name = "Wallet"
+
+    def __str__(self) -> str:  # pragma: no cover - admin convenience
+        return f"{self.user} ({self.balance} coins)"
+
+
+class WalletTransaction(BaseModel):
+    class Type(models.TextChoices):
+        DEPOSIT = "deposit", _("Deposit")
+        WITHDRAW = "withdraw", _("Withdraw")
+        ADJUST = "adjust", _("Adjust")
+
+    wallet = models.ForeignKey(Wallet, related_name="transactions", on_delete=models.CASCADE)
+    type = models.CharField(max_length=10, choices=Type.choices)
+    coins = models.IntegerField()
+    balance_after = models.PositiveIntegerField()
+    payment = models.ForeignKey(
+        Payment,
+        related_name="wallet_transactions",
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+    )
+    description = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        ordering = ("-created_at",)
+        indexes = [
+            models.Index(fields=("wallet", "created_at")),
+        ]
+
+    def clean(self) -> None:
+        super().clean()
+        if self.type == self.Type.DEPOSIT and self.coins <= 0:
+            raise ValidationError({"coins": "مبلغ واریز باید مثبت باشد."})
+        if self.type == self.Type.WITHDRAW and self.coins >= 0:
+            raise ValidationError({"coins": "مبلغ برداشت باید منفی باشد."})
+        if self.balance_after < 0:
+            raise ValidationError({"balance_after": "موجودی کیف پول نمی‌تواند منفی شود."})

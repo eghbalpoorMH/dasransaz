@@ -4,7 +4,7 @@ from django.contrib import admin, messages
 from django.utils.translation import gettext_lazy as _
 
 from . import services
-from .models import Scene, Story
+from .models import Scene, Story, StoryProduct
 
 
 class SceneInline(admin.StackedInline):
@@ -14,12 +14,26 @@ class SceneInline(admin.StackedInline):
     ordering = ("page_no",)
 
 
+@admin.register(StoryProduct)
+class StoryProductAdmin(admin.ModelAdmin):
+    list_display = ("title", "coin_price", "bazaar_sku", "is_active", "display_order", "updated_at")
+    list_editable = ("coin_price", "bazaar_sku", "is_active", "display_order")
+    search_fields = ("title", "slug", "bazaar_sku")
+    list_filter = ("is_active",)
+    readonly_fields = ("slug", "created_at", "updated_at")
+    fieldsets = (
+        (_("Basic info"), {"fields": ("title", "slug", "description", "coin_price", "bazaar_sku")}),
+        (_("Presentation"), {"fields": ("features", "display_order", "is_active")}),
+    )
+
+
 @admin.register(Story)
 class StoryAdmin(admin.ModelAdmin):
     list_display = (
         "id",
         "title",
         "owner",
+        "product",
         "status",
         "visibility",
         "is_hidden",
@@ -27,7 +41,7 @@ class StoryAdmin(admin.ModelAdmin):
         "published_at",
         "created_at",
     )
-    list_filter = ("status", "visibility", "is_hidden", "lang", "reading_level", "created_at")
+    list_filter = ("status", "visibility", "is_hidden", "lang", "reading_level", "product", "created_at")
     search_fields = ("title", "slug", "owner__email", "owner__username")
     readonly_fields = ("published_at", "created_at", "updated_at", "plan_source", "request")
     fieldsets = (
@@ -45,7 +59,7 @@ class StoryAdmin(admin.ModelAdmin):
                 )
             },
         ),
-        (_("Relations"), {"fields": ("owner", "child", "request", "plan_source")}),
+        (_("Relations"), {"fields": ("owner", "child", "product", "request", "plan_source")}),
     )
     inlines = (SceneInline,)
     actions = ("action_publish", "action_unpublish", "action_hide", "action_unhide", "action_move_draft", "action_archive")

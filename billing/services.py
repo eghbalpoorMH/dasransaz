@@ -20,7 +20,7 @@ from billing.exceptions import (
     StoryRequestNotFound,
 )
 
-from .models import IdempotencyKey, Payment, ProviderTransaction, Refund
+from .models import IdempotencyKey, Payment, ProviderCoinRate, ProviderTransaction, Refund, Wallet, WalletTransaction
 from .providers import get_provider_class
 
 
@@ -179,6 +179,11 @@ def apply_success(
 
     request_services.mark_paid(payment.intent_id, payment=payment, note=note)
 
+    wallet_credit = _credit_wallet_from_payment(payment)
+    if wallet_credit:
+        payment.meta_json = {**(payment.meta_json or {}), "wallet_credit": wallet_credit}
+        payment.save(update_fields=["meta_json", "updated_at"])
+
     return payment
 
 
@@ -270,3 +275,51 @@ def get_status(payment: Payment, *, user) -> dict[str, Any]:
 
 def get_provider_instance(code: str):
     return _get_provider(code)
+
+
+def _resolve_coin_rate(payment: Payment) -> ProviderCoinRate | None:
+    currency = payment.currency or settings.BILLING.get("CURRENCY", "IRR")
+    qs = (
+        ProviderCoinRate.objects.active()
+        .for_provider(payment.provider, currency)
+        .order_by("-base_amount")
+    )
+    return qs.filter(base_amount__lte=payment.amount).first()
+
+
+def _credit_wallet_from_payment(payment: Payment) -> dict[str, str | int] | None:
+    if payment.wallet_transactions.filter(type=WalletTransaction.Type.DEPOSIT).exists():
+        return None
+
+    rate = _resolve_coin_rate(payment)
+    if not rate:
+        return None
+
+    coins = rate.coins_for_amount(payment.amount)
+    if coins <= 0:
+        return None
+
+    wallet = (
+        Wallet.objects.select_for_update()
+        .filter(user=payment.user)
+        .first()
+    )
+    if not wallet:
+        wallet = Wallet.objects.create(user=payment.user, balance=0)
+    wallet.balance += coins
+    wallet.save(update_fields=["balance", "updated_at"])
+
+    WalletTransaction.objects.create(
+        wallet=wallet,
+        type=WalletTransaction.Type.DEPOSIT,
+        coins=coins,
+        balance_after=wallet.balance,
+        payment=payment,
+        description=f"Top-up via {payment.provider}",
+    )
+
+    return {
+        "coins": coins,
+        "rate_id": str(rate.uuid),
+        "wallet_id": str(wallet.uuid),
+    }

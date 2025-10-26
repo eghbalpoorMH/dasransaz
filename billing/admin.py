@@ -4,7 +4,15 @@ from django.contrib import admin, messages
 
 from billing import services
 
-from .models import IdempotencyKey, Payment, ProviderTransaction, Refund
+from .models import (
+    IdempotencyKey,
+    Payment,
+    ProviderCoinRate,
+    ProviderTransaction,
+    Refund,
+    Wallet,
+    WalletTransaction,
+)
 
 
 class ProviderTransactionInline(admin.TabularInline):
@@ -81,3 +89,24 @@ class IdempotencyKeyAdmin(admin.ModelAdmin):
     list_display = ("key", "scope", "payment", "created_at")
     search_fields = ("key",)
     list_filter = ("scope",)
+
+
+@admin.register(ProviderCoinRate)
+class ProviderCoinRateAdmin(admin.ModelAdmin):
+    list_display = ("provider", "currency", "base_amount", "coins", "is_active")
+    list_editable = ("coins", "is_active")
+    list_filter = ("provider", "currency", "is_active")
+    search_fields = ("provider",)
+
+
+@admin.register(Wallet)
+class WalletAdmin(admin.ModelAdmin):
+    list_display = ("user", "balance", "updated_at")
+    search_fields = ("user__username", "user__email")
+
+
+@admin.register(WalletTransaction)
+class WalletTransactionAdmin(admin.ModelAdmin):
+    list_display = ("wallet", "type", "coins", "balance_after", "payment", "created_at")
+    list_filter = ("type",)
+    search_fields = ("wallet__user__username", "payment__intent_id")

@@ -11,6 +11,54 @@ from slugify import slugify
 from accounts.models import BaseModel
 
 
+class StoryProduct(BaseModel):
+    title = models.CharField(max_length=120)
+    slug = models.SlugField(max_length=64, unique=True, blank=True)
+    description = models.TextField(blank=True)
+    coin_price = models.PositiveIntegerField()
+    bazaar_sku = models.CharField(max_length=120, blank=True, default="", help_text="SKU ثبت‌شده در کافه‌بازار")
+    is_active = models.BooleanField(default=True)
+    features = models.JSONField(default=list, blank=True)
+    display_order = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ("display_order", "title")
+        verbose_name = "Story product"
+        verbose_name_plural = "Story products"
+        indexes = [
+            models.Index(fields=("is_active", "display_order")),
+        ]
+
+    def __str__(self) -> str:  # pragma: no cover - human readable
+        return f"{self.title} ({self.coin_price} coins)"
+
+    def clean(self) -> None:
+        super().clean()
+        if self.coin_price <= 0:
+            raise ValidationError({"coin_price": "قیمت سکه باید بزرگ‌تر از صفر باشد."})
+        if self.bazaar_sku:
+            existing = StoryProduct.objects.filter(bazaar_sku__iexact=self.bazaar_sku)
+            if self.pk:
+                existing = existing.exclude(pk=self.pk)
+            if existing.exists():
+                raise ValidationError({"bazaar_sku": "این شناسهٔ بازار قبلاً استفاده شده است."})
+
+        features = self.features or []
+        if not isinstance(features, list):
+            raise ValidationError({"features": "لیست ویژگی‌ها نامعتبر است."})
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            base_slug = slugify(self.title)[:60] or "product"
+            candidate = base_slug
+            suffix = 1
+            while StoryProduct.objects.filter(slug=candidate).exclude(pk=self.pk).exists():
+                candidate = f"{base_slug}-{suffix}"
+                suffix += 1
+            self.slug = candidate
+        super().save(*args, **kwargs)
+
+
 class Story(BaseModel):
     class Status(models.TextChoices):
         DRAFT = "DRAFT", "Draft"
@@ -34,6 +82,13 @@ class Story(BaseModel):
     )
     child = models.ForeignKey(
         "accounts.Child",
+        related_name="stories",
+        blank=True,
+        null=True,
+        on_delete=models.SET_NULL,
+    )
+    product = models.ForeignKey(
+        StoryProduct,
         related_name="stories",
         blank=True,
         null=True,
@@ -72,6 +127,7 @@ class Story(BaseModel):
             models.Index(fields=["status", "visibility", "is_hidden", "lang"], name="story_status_visibility_idx"),
             models.Index(fields=["owner", "status"], name="story_owner_status_idx"),
             models.Index(fields=["slug"], name="story_slug_idx"),
+            models.Index(fields=["product", "plan_source"], name="story_product_plan_idx"),
         ]
         ordering = ("-published_at", "-created_at")
 

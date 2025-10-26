@@ -63,6 +63,13 @@ class StoryRequest(BaseModel):
         blank=True,
         null=True,
     )
+    product = models.ForeignKey(
+        "stories.StoryProduct",
+        related_name="story_requests",
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+    )
     lang = models.CharField(max_length=5, default=LANG_DEFAULT)
     reading_level = models.CharField(
         max_length=3,

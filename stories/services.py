@@ -38,6 +38,7 @@ def create_story_from_request(
         request=request_obj,
         owner=request_obj.user,
         child=request_obj.child,
+        product=request_obj.product,
         title=title,
         lang=request_obj.lang,
         reading_level=request_obj.reading_level,

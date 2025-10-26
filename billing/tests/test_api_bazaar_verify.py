@@ -6,6 +6,7 @@ from rest_framework.test import APIClient
 from billing import services
 from billing.models import Payment
 from story_requests.models import StoryRequest
+from stories.models import StoryProduct
 from story_requests.services import enqueue_request
 
 
@@ -20,6 +21,12 @@ def test_bazaar_verify_success(monkeypatch, user, child):
 
     monkeypatch.setattr(services, "_get_provider", lambda code: DummyProvider())
 
+    product = StoryProduct.objects.create(
+        title="Premium Coins",
+        coin_price=140000,
+        bazaar_sku="product-1",
+    )
+
     story_request = StoryRequest.objects.create(
         user=user,
         child=child,
@@ -27,6 +34,7 @@ def test_bazaar_verify_success(monkeypatch, user, child):
         reading_level=StoryRequest.ReadingLevel.K1,
         theme="Paid",
         plan=StoryRequest.Plan.PAID,
+        product=product,
         characters_json=[{"name": "Ali", "role": "hero"}],
         meta_json={"expected_amount": 140000},
     )
@@ -71,6 +79,12 @@ def test_bazaar_verify_failure(monkeypatch, user, child):
 
     monkeypatch.setattr(services, "_get_provider", lambda code: DummyProvider())
 
+    product = StoryProduct.objects.create(
+        title="Premium Coins",
+        coin_price=140000,
+        bazaar_sku="product-1",
+    )
+
     story_request = StoryRequest.objects.create(
         user=user,
         child=child,
@@ -78,6 +92,7 @@ def test_bazaar_verify_failure(monkeypatch, user, child):
         reading_level=StoryRequest.ReadingLevel.K1,
         theme="Paid",
         plan=StoryRequest.Plan.PAID,
+        product=product,
         characters_json=[{"name": "Ali", "role": "hero"}],
         meta_json={"expected_amount": 140000},
     )

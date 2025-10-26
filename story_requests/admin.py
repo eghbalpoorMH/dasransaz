@@ -41,8 +41,8 @@ class EditorWorkspaceForm(forms.Form):
 
 @admin.register(StoryRequest)
 class StoryRequestAdmin(admin.ModelAdmin):
-    list_display = ("public_id", "user", "child", "plan", "status", "queue_priority", "created_at")
-    list_filter = ("status", "plan", "lang", "reading_level", "created_at")
+    list_display = ("public_id", "user", "child", "product", "plan", "status", "queue_priority", "created_at")
+    list_filter = ("status", "plan", "product", "lang", "reading_level", "created_at")
     search_fields = ("user__username", "user__email", "child__name", "theme")
     ordering = ("queue_priority", "created_at")
     readonly_fields = ("position_hint", "payment", "created_at", "updated_at")

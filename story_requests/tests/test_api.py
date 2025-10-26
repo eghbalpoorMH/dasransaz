@@ -6,6 +6,7 @@ from rest_framework.test import APIClient
 from uuid import uuid4
 
 from story_requests.models import StoryRequest
+from stories.models import StoryProduct
 
 
 API_PREFIX = "/api/v1/requests/"
@@ -69,8 +70,10 @@ def test_payment_init_flow_via_billing_api(user, monkeypatch):
     assert create_response.status_code == 201, create_response.content
     story_request = StoryRequest.objects.get(user=user, plan=StoryRequest.Plan.PAID)
     assert story_request.status == StoryRequest.Status.PAYMENT_REQUIRED
+    product = StoryProduct.objects.create(title="Coins", coin_price=150000, bazaar_sku="product_1")
+    story_request.product = product
     story_request.meta_json = {"expected_amount": 150000}
-    story_request.save(update_fields=["meta_json", "updated_at"])
+    story_request.save(update_fields=["product", "meta_json", "updated_at"])
 
     class DummyProvider:
         def init_payment(self, payment, return_url: str, callback_url: str):

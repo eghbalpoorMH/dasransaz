@@ -6,7 +6,7 @@ from django.utils.translation import gettext_lazy as _
 from rest_framework import serializers
 
 from accounts.models import Child
-from stories.models import Scene, Story
+from stories.models import Scene, Story, StoryProduct
 
 
 class ChildSummarySerializer(serializers.ModelSerializer):
@@ -45,8 +45,16 @@ class SceneWriteSerializer(serializers.Serializer):
     annotations_json = serializers.DictField(required=False)
 
 
+class StoryProductSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = StoryProduct
+        fields = ("id", "slug", "title", "coin_price", "bazaar_sku")
+        read_only_fields = fields
+
+
 class StoryListSerializer(serializers.ModelSerializer):
     scenes_count = serializers.SerializerMethodField()
+    product = StoryProductSerializer(read_only=True)
 
     class Meta:
         model = Story
@@ -62,6 +70,7 @@ class StoryListSerializer(serializers.ModelSerializer):
             "published_at",
             "plan_source",
             "scenes_count",
+            "product",
         )
         read_only_fields = fields
 

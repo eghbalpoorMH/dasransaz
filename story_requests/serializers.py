@@ -16,6 +16,7 @@ from story_requests.services import (
 from django.urls import reverse
 
 from .models import RequestTransition, StoryRequest
+from stories.models import StoryProduct
 
 
 class CharacterSerializer(serializers.Serializer):
@@ -41,6 +42,12 @@ class StoryRequestCreateSerializer(serializers.ModelSerializer):
         queryset=Child.objects.all(), source="child", required=False, allow_null=True
     )
     characters = CharacterSerializer(many=True, required=False)
+    product_id = serializers.PrimaryKeyRelatedField(
+        queryset=StoryProduct.objects.filter(is_active=True),
+        source="product",
+        required=False,
+        allow_null=True,
+    )
 
     class Meta:
         model = StoryRequest
@@ -51,6 +58,7 @@ class StoryRequestCreateSerializer(serializers.ModelSerializer):
             "theme",
             "prompt_note",
             "plan",
+            "product_id",
             "characters",
         )
 
@@ -103,10 +111,11 @@ class StoryRequestListSerializer(serializers.ModelSerializer):
     id = serializers.CharField(source="public_id", read_only=True)
     position = serializers.SerializerMethodField()
     child = serializers.SerializerMethodField()
+    product = serializers.SerializerMethodField()
 
     class Meta:
         model = StoryRequest
-        fields = ("id", "status", "plan", "theme", "created_at", "position", "child")
+        fields = ("id", "status", "plan", "theme", "created_at", "position", "child", "product")
         read_only_fields = fields
 
     def get_position(self, obj: StoryRequest) -> int:
@@ -117,6 +126,11 @@ class StoryRequestListSerializer(serializers.ModelSerializer):
             return None
         return ChildSummarySerializer(obj.child).data
 
+    def get_product(self, obj: StoryRequest) -> Any:
+        if not obj.product:
+            return None
+        return StoryProductSummarySerializer(obj.product).data
+
 
 class StoryRequestDetailSerializer(serializers.ModelSerializer):
     id = serializers.CharField(source="public_id", read_only=True)
@@ -125,6 +139,7 @@ class StoryRequestDetailSerializer(serializers.ModelSerializer):
     characters = serializers.SerializerMethodField()
     child = serializers.SerializerMethodField()
     payment_init_url = serializers.SerializerMethodField()
+    product = serializers.SerializerMethodField()
 
     class Meta:
         model = StoryRequest
@@ -142,6 +157,7 @@ class StoryRequestDetailSerializer(serializers.ModelSerializer):
             "position",
             "characters",
             "child",
+            "product",
             "payment_init_url",
         )
         read_only_fields = fields
@@ -169,6 +185,11 @@ class StoryRequestDetailSerializer(serializers.ModelSerializer):
             return None
         return ChildSummarySerializer(obj.child).data
 
+    def get_product(self, obj: StoryRequest) -> Any:
+        if not obj.product:
+            return None
+        return StoryProductSummarySerializer(obj.product).data
+
 
 class RequestTransitionSerializer(serializers.ModelSerializer):
     actor = serializers.StringRelatedField()
@@ -176,4 +197,11 @@ class RequestTransitionSerializer(serializers.ModelSerializer):
     class Meta:
         model = RequestTransition
         fields = ("from_status", "to_status", "note", "actor", "created_at")
+        read_only_fields = fields
+
+
+class StoryProductSummarySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = StoryProduct
+        fields = ("id", "slug", "title", "coin_price", "bazaar_sku")
         read_only_fields = fields

@@ -8,6 +8,9 @@
     <p><strong>Theme:</strong> {{ story_request.theme }}</p>
     <p><strong>Reading level:</strong> {{ story_request.get_reading_level_display }}</p>
     <p><strong>Plan:</strong> {{ story_request.get_plan_display }}</p>
+    {% if story_request.product %}
+      <p><strong>Product:</strong> {{ story_request.product.title }} — {{ story_request.product.coin_price }} coins</p>
+    {% endif %}
     <p><strong>Status:</strong> {{ story_request.status }}</p>
     <p><strong>Characters:</strong></p>
     <ul>
