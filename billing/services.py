@@ -11,9 +11,10 @@ from django.utils import timezone
 from billing.exceptions import (
     AmountMismatch,
     BillingError,
+    InsufficientWalletBalance,
     InvalidProvider,
-    PaymentNotAllowed,
     PaymentAlreadySucceeded,
+    PaymentNotAllowed,
     PermissionDeniedBilling,
     ProviderUnavailable,
     RefundNotAllowed,
@@ -28,6 +29,13 @@ from .providers import get_provider_class
 class PaymentAction:
     payment: Payment
     action: dict[str, Any]
+
+
+@dataclass
+class WalletPaymentResult:
+    payment: Payment
+    wallet_balance: int
+    coins_spent: int
 
 
 def _get_provider(code: str):
@@ -323,3 +331,102 @@ def _credit_wallet_from_payment(payment: Payment) -> dict[str, str | int] | None
         "rate_id": str(rate.uuid),
         "wallet_id": str(wallet.uuid),
     }
+
+
+@transaction.atomic
+def pay_with_wallet(
+    *,
+    intent_id: str,
+    user,
+    note: str = "پرداخت با کیف پول انجام شد.",
+    description: str | None = None,
+) -> WalletPaymentResult:
+    from story_requests import services as request_services
+    from story_requests.models import StoryRequest
+
+    if (
+        Payment.objects.select_for_update()
+        .for_intent(intent_id)
+        .successful()
+        .exists()
+    ):
+        raise PaymentAlreadySucceeded()
+
+    try:
+        story_request = request_services.get_request_by_intent(intent_id)
+    except ValidationError as exc:  # type: ignore[name-defined]
+        raise StoryRequestNotFound() from exc
+
+    if story_request.user_id != user.id:
+        raise PermissionDeniedBilling()
+
+    story_request = (
+        StoryRequest.objects.select_for_update()
+        .select_related("product", "payment")
+        .get(pk=story_request.pk)
+    )
+
+    if story_request.plan != StoryRequest.Plan.PAID:
+        raise PaymentNotAllowed("این درخواست نیاز به پرداخت ندارد.")
+
+    if story_request.status not in (
+        StoryRequest.Status.PAYMENT_REQUIRED,
+        StoryRequest.Status.SUBMITTED,
+    ):
+        raise PaymentNotAllowed()
+
+    product = story_request.product
+    if not product or product.coin_price <= 0:
+        raise PaymentNotAllowed("برای این درخواست محصول معتبری تنظیم نشده است.")
+
+    wallet = (
+        Wallet.objects.select_for_update()
+        .filter(user=user)
+        .first()
+    )
+
+    if not wallet or wallet.balance < product.coin_price:
+        raise InsufficientWalletBalance()
+
+    wallet.balance -= product.coin_price
+    wallet.save(update_fields=["balance", "updated_at"])
+
+    payment_description = description or f"Wallet payment for {intent_id}"
+    payment = Payment.objects.create(
+        user=user,
+        provider="wallet",
+        intent_id=intent_id,
+        amount=0,
+        description=payment_description,
+        status=Payment.Status.SUCCESS,
+        meta_json={
+            "wallet_spent": product.coin_price,
+            "wallet_balance_after": wallet.balance,
+            "note": note,
+            "last_action": {"type": "wallet"},
+        },
+    )
+
+    WalletTransaction.objects.create(
+        wallet=wallet,
+        type=WalletTransaction.Type.WITHDRAW,
+        coins=-product.coin_price,
+        balance_after=wallet.balance,
+        payment=payment,
+        description=f"Story request {intent_id}",
+    )
+
+    _attach_payment_to_story_request(payment)
+    _log_event(
+        payment,
+        ProviderTransaction.Event.VERIFY_OK,
+        {
+            "mode": "wallet",
+            "coins_spent": product.coin_price,
+            "wallet_balance_after": wallet.balance,
+        },
+    )
+
+    request_services.mark_paid(intent_id, payment=payment, note=note)
+
+    return WalletPaymentResult(payment=payment, wallet_balance=wallet.balance, coins_spent=product.coin_price)

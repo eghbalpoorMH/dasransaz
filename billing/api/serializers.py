@@ -37,6 +37,12 @@ class BazaarVerifySerializer(serializers.Serializer):
     order_id = serializers.CharField(max_length=200, required=False, allow_blank=True)
 
 
+class WalletPaymentSerializer(serializers.Serializer):
+    intent_id = serializers.CharField(max_length=64)
+    note = serializers.CharField(required=False, allow_blank=True)
+    description = serializers.CharField(required=False, allow_blank=True)
+
+
 class PaymentStatusSerializer(serializers.ModelSerializer):
     class Meta:
         model = Payment

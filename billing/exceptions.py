@@ -51,3 +51,8 @@ class PaymentNotAllowed(BillingError):
 class PermissionDeniedBilling(BillingError):
     def __init__(self):
         super().__init__("PERMISSION_DENIED", "دسترسی مجاز نیست.")
+
+
+class InsufficientWalletBalance(BillingError):
+    def __init__(self):
+        super().__init__("INSUFFICIENT_FUNDS", "موجودی کیف پول برای این خرید کافی نیست.")

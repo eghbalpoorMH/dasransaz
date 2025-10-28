@@ -15,7 +15,7 @@ from rest_framework.views import APIView
 
 from billing import services
 from billing.exceptions import BillingError, PaymentAlreadySucceeded
-from billing.models import Payment
+from billing.models import Payment, Wallet
 from billing.permissions import IsStaffUser
 
 from .serializers import (
@@ -24,6 +24,7 @@ from .serializers import (
     PaymentInitSerializer,
     PaymentStatusSerializer,
     RefundRequestSerializer,
+    WalletPaymentSerializer,
 )
 
 
@@ -238,6 +239,51 @@ class PaymentRefundView(APIView):
                 "refund_id": str(refund.uuid),
                 "status": refund.status,
                 "amount": refund.amount,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class WalletInfoView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(responses={200: OpenApiResponse(description="Wallet balance retrieved.")})
+    def get(self, request, *args, **kwargs):
+        wallet = Wallet.objects.filter(user=request.user).first()
+        balance = wallet.balance if wallet else 0
+        return Response({"balance": balance})
+
+
+class WalletPaymentView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(request=WalletPaymentSerializer, responses={200: OpenApiResponse(description="Wallet payment processed.")})
+    def post(self, request, *args, **kwargs):
+        serializer = WalletPaymentSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            result = services.pay_with_wallet(
+                intent_id=serializer.validated_data["intent_id"],
+                user=request.user,
+                note=serializer.validated_data.get("note") or "پرداخت با کیف پول انجام شد.",
+                description=serializer.validated_data.get("description"),
+            )
+        except PaymentAlreadySucceeded as exc:
+            return Response({"code": exc.code, "detail": exc.message}, status=status.HTTP_409_CONFLICT)
+        except BillingError as exc:
+            status_code = status.HTTP_400_BAD_REQUEST
+            if exc.code == "PERMISSION_DENIED":
+                status_code = status.HTTP_403_FORBIDDEN
+            return Response({"code": exc.code, "detail": exc.message}, status=status_code)
+
+        return Response(
+            {
+                "payment_id": str(result.payment.uuid),
+                "status": result.payment.status,
+                "intent_id": result.payment.intent_id,
+                "wallet_balance": result.wallet_balance,
+                "coins_spent": result.coins_spent,
             },
             status=status.HTTP_200_OK,
         )
